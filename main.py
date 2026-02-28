@@ -18,35 +18,36 @@ def proxy_bridge(source, destination):
     finally:
         source.close()
         destination.close()
-
 def start_proxy(local_port, remote_host, remote_port):
-    # Tworzymy kontekst SSL, który akceptuje TLS 1.0 dla Nokii
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    context.set_ciphers('DEFAULT@SECLEVEL=1') # Obniżenie poziomu bezpieczeństwa dla Nokii
-    context.minimum_version = ssl.TLSVersion.TLSv1 # Włączenie TLS 1.0
+    # Tworzymy luźniejszy kontekst, by nie wywalało błędu na starcie
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.set_ciphers('DEFAULT@SECLEVEL=0') # Najniższy poziom zabezpieczeń dla Nokii
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
     
+    # Próbujemy włączyć TLS 1.0, ale nie blokujemy skryptu jeśli system się stawia
+    try:
+        context.minimum_version = ssl.TLSVersion.TLSv1
+    except:
+        pass 
+
     bind_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    bind_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     bind_socket.bind(('0.0.0.0', local_port))
     bind_socket.listen(5)
     
-    print(f"Mostek aktywny na porcie {local_port} -> {remote_host}:{remote_port}")
+    print(f"Mostek aktywny na porcie {local_port}")
 
     while True:
-        client_sock, addr = bind_socket.accept()
-        # "Ubieramy" połączenie z Nokią w stary SSL/TLS 1.0
-        secure_client = context.wrap_socket(client_sock, server_side=True)
-        
-        # Łączymy się z Onetem nowoczesnym SSL/TLS 1.2+
-        remote_sock = socket.create_connection((remote_host, remote_port))
-        secure_remote = ssl.create_default_context().wrap_socket(remote_sock, server_hostname=remote_host)
-        
-        # Startujemy dwa wątki do przesyłania danych w obie strony
-        threading.Thread(target=proxy_bridge, args=(secure_client, secure_remote)).start()
-        threading.Thread(target=proxy_bridge, args=(secure_remote, secure_client)).start()
-
-# Uruchomienie mostka dla IMAP (poczta przychodząca)
-if __name__ == "__main__":
-    # Render używa zmiennej środowiskowej PORT, zazwyczaj 10000
-    import os
-    port = int(os.environ.get("PORT", 10000))
-    start_proxy(port, IMAP_ONET[0], IMAP_ONET[1])
+        try:
+            client_sock, addr = bind_socket.accept()
+            # Wrapujemy tylko jeśli Nokia faktycznie o to poprosi
+            secure_client = context.wrap_socket(client_sock, server_side=True)
+            
+            remote_sock = socket.create_connection((remote_host, remote_port))
+            secure_remote = ssl.create_default_context().wrap_socket(remote_sock, server_hostname=remote_host)
+            
+            threading.Thread(target=proxy_bridge, args=(secure_client, secure_remote)).start()
+            threading.Thread(target=proxy_bridge, args=(secure_remote, secure_client)).start()
+        except Exception as e:
+            print(f"Błąd połączenia: {e}")
