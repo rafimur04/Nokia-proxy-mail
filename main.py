@@ -19,17 +19,16 @@ def proxy_bridge(source, destination):
         source.close()
         destination.close()
 def start_proxy(local_port, remote_host, remote_port):
-    # Tworzymy luźniejszy kontekst, by nie wywalało błędu na starcie
+    # Tworzymy kontekst akceptujący stare szyfrowanie Nokii
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.set_ciphers('DEFAULT@SECLEVEL=0') # Najniższy poziom zabezpieczeń dla Nokii
+    context.set_ciphers('DEFAULT@SECLEVEL=0') 
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
     
-    # Próbujemy włączyć TLS 1.0, ale nie blokujemy skryptu jeśli system się stawia
     try:
         context.minimum_version = ssl.TLSVersion.TLSv1
     except:
-        pass 
+        pass
 
     bind_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     bind_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
